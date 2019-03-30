@@ -1,0 +1,24 @@
+{
+  "name": "vinnsl-nn-worker-tensorflow",
+  "version": "1.0.0",
+  "dependencies": {
+    "@tensorflow/tfjs": "^0.15.1",
+    "@tensorflow/tfjs-node": "latest",
+    "axios": "^0.18.0",
+    "canvas": "^2.4.1",
+    "cookie-parser": "^1.4.4",
+    "dateformat": "^3.0.3",
+    "express": "^4.16.4",
+    "express-handlebars": "^3.0.2",
+    "http-errors": "^1.7.2",
+    "https": "^1.0.0",
+    "morgan": "^1.9.1",
+    "request": "^2.88.0",
+    "request-promise": "^4.2.4",
+    "sharp": "^0.21.3",
+    "tfjs-node-save": "0.0.2",
+    "winston": "^3.2.1",
+    "xml-js": "^1.6.11",
+    "zeros": "^1.0.0"
+  }
+}
