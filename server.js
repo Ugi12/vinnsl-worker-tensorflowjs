@@ -10,7 +10,7 @@ const workerController = require('./public/nnworker/service/worker-controller');
 
 // Constants
 const PORT = 3000;
-const HOST = 'localhost';
+const HOST = '0.0.0.0';
 
 // App
 const app = express();

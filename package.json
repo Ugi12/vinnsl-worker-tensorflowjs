@@ -2,7 +2,6 @@
   "name": "vinnsl-nn-worker-tensorflow",
   "version": "1.0.0",
   "dependencies": {
-    "@tensorflow/tfjs": "^0.15.1",
     "@tensorflow/tfjs-node": "latest",
     "axios": "^0.18.0",
     "canvas": "^2.4.1",
