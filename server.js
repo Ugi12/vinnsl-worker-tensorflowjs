@@ -10,7 +10,8 @@ const workerController = require('./public/nnworker/service/worker-controller');
 
 // Constants
 const PORT = 3000;
-const HOST = '0.0.0.0';
+//const HOST = '0.0.0.0';
+const HOST = 'vinnsl-nn-worker-tensorflow-js';
 
 // App
 const app = express();
@@ -24,7 +25,17 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/worker', workerController);
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', '*');
+
+    if(req.method === 'OPTIONS'){
+        res.header('Access-Control-Allow-Methods', '*');
+        return res.status(200).json({});
+    }
+    next();
+});
+app.use('/tfjs/worker', workerController);
 
 /*
 app.get('/', (req, res) => {

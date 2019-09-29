@@ -2,10 +2,11 @@ const express = require('express');
 
 const tf = require('@tensorflow/tfjs-node');
 
-Stream = require('stream').Transform;
+//Stream = require('stream').Transform;
 
-const axios = require('axios');
+// const axios = require('axios');
 
+let request = require('request');
 
 const fs = require('fs');
 const tf_iris_network_trainer = require('../tensorflow/iris/network-trainer');
@@ -13,7 +14,10 @@ const tf_mnist_network_trainer = require('../tensorflow/mnist/network-trainer');
 const tf_mnist_test_model = require('../tensorflow/mnist/test-model');
 const tf_wine_network_trainer = require('../tensorflow/wine/network-trainer');
 const tf_lstm_network_trainer = require('../tensorflow/lstm/network-trainer');
-const tf_lstm_text_generation = require('../tensorflow/lstm/text-generation');
+
+const tf_lstm_network_traine_test = require('../tensorflow/lstm/test-network-trainer');
+
+const tf_lstm_text_generation = require('../tensorflow/lstm/generate-text');
 const addresses = require('../util/addresses');
 const nnStatus = require('../util/nn-status')
 
@@ -95,8 +99,9 @@ router.post('/lstm', function (req, res, next) {
         let text = req.body.text;
 
 
-        //nnStatus.setStatusToInProgress(id);
+        nnStatus.setStatusToInProgress(id);
         tf_lstm_network_trainer.lstmTrainer(id, text);
+        //tf_lstm_network_traine_test.lstmTrainer(id);
         res.send(null);
     }catch (e) {
         console.log(e);
@@ -127,7 +132,7 @@ router.post('/save/text/lstm', function (req, res, next) {
         // text = text.replace(/\\n/g, '');
 
 
-
+/*
         axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/save-text/lstm', {
             id: id,
             text: text
@@ -137,6 +142,19 @@ router.post('/save/text/lstm', function (req, res, next) {
         })
         .catch(error => {
             console.log(error);
+        });
+*/
+
+        request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/save-text/lstm', {
+            json: {
+                id: id,
+                text: text
+            }
+        }, (error, res, body) => {
+            if (error) {
+                console.error(error)
+                return
+            }
         });
 
 
@@ -150,20 +168,22 @@ router.post('/save/text/lstm', function (req, res, next) {
 });
 /**
  * API endpoint for training LSTM network
- */
+
 router.post('/lstm', function (req, res, next) {
 
     try {
         let id = req.body.id;
         // let text = req.body.text;
         nnStatus.setStatusToInProgress(id);
-        tf_lstm_network_trainer.lstmTrainer(id);
+        //tf_lstm_network_trainer.lstmTrainer(id);
+        tf_lstm_network_traine_test.lstmTrainer(id);
         res.send(null);
     }catch (e) {
         console.log(e);
     }
 
 });
+ */
 
 /**
  * API endpoint for generate text for LSTM model with TensorFlow-JS
@@ -175,14 +195,83 @@ router.post('/lstm/generate/text', async function (req, res, next) {
         let textLen = parseInt(req.body.textLen);
         let temperature = parseFloat(req.body.temperature);
 
+        console.log(id);
+        console.log(textLen);
+        console.log(temperature);
 
+
+        //const result = await tf_lstm_network_trainer.lstmTextGenerator(id);
         const result = await tf_lstm_text_generation.lstmTextGeneration(id, textLen, temperature);
+        console.log('result before response: '+result);
         res.send(result);
     }catch (e) {
         console.log(e);
     }
 
 });
+
+
+/**
+ * DELETE IRIS MODEL
+ */
+router.post('/iris/delete', function (req, res, next) {
+
+    try {
+        let id = req.body.id;
+        tf_iris_network_trainer.deleteIrisModel(id);
+        res.send(true);
+    }catch (e) {
+        console.log(e);
+    }
+
+});
+
+/**
+ * DELETE MNIST MODEL
+ */
+router.post('/mnist/delete', function (req, res, next) {
+
+    try {
+        let id = req.body.id;
+        tf_mnist_network_trainer.deleteMnistModel(id);
+        res.send(true);
+    }catch (e) {
+        console.log(e);
+    }
+
+});
+
+/**
+ * DELETE WINE MODEL
+ */
+router.post('/wine/delete', function (req, res, next) {
+
+    try {
+        let id = req.body.id;
+        tf_wine_network_trainer.deleteWineModel(id);
+        res.send(true);
+    }catch (e) {
+        console.log(e);
+    }
+
+});
+
+/**
+ * DELETE LSTM MODEL
+ */
+router.post('/lstm/delete', function (req, res, next) {
+
+    try {
+        let id = req.body.id;
+        tf_lstm_network_trainer.deleteLstmModel(id);
+        res.send(true);
+    }catch (e) {
+        console.log(e);
+    }
+
+});
+
+
 
 
 

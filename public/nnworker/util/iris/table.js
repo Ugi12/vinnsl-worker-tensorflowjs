@@ -1,6 +1,7 @@
 const irisJS = require('../../data/iris/iris');
-const axios = require('axios');
+// const axios = require('axios');
 let addresses = require('../addresses');
+let request = require('request');
 
 module.exports = {
 
@@ -75,6 +76,7 @@ module.exports = {
 
         })
 
+        /*
         axios.put(addresses.getVinnslServiceEndpoint() + '/status/' + id + '/FINISHED')
             .then(response => {
                 //ignore response
@@ -82,6 +84,16 @@ module.exports = {
             .catch(error => {
                 console.log(error);
             });
+            */
+
+        request.put(addresses.getVinnslServiceEndpoint() + '/status/' + id + '/FINISHED', (error, res, body) => {
+            if (error) {
+                console.error(error)
+                return
+            }
+            // console.log(`statusCode: ${res.statusCode}`)
+            // console.log(body)
+        });
 
         let responseObj = [];
         let predInPercent = correctPredicted / yTrue.length * 100;

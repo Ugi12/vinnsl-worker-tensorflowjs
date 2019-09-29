@@ -1,8 +1,10 @@
 let request = require('request');
+const requestPromise = require('request-promise');
+
 let mnist = require('../../util/mnist/mnist');
 let dateFormat = require('dateformat');
 
-const axios = require('axios');
+//const axios = require('axios');
 const addresses = require('../../util/addresses');
 const nnStatus = require('../../util/nn-status');
 const fs = require('fs');
@@ -26,7 +28,7 @@ const OUTPUT_NEURONS = 0;
 const DEFAULT_LEARNING_RATE = 0.1;
 const DEFAULT_EPOCHS = 20;
 const DEFAULT_BATCH_SIZE = 128;
-const DEFAULT_ACTIVATION_FUNCTON = 'relu'
+const DEFAULT_ACTIVATION_FUNCTON = 'relu';
 
 
 
@@ -265,7 +267,6 @@ module.exports = {
                             `  Loss = ${evalOutput[0].dataSync()[0].toFixed(3)}; `+
                             `Accuracy = ${evalOutput[1].dataSync()[0].toFixed(4)}`);
 
-
                     }catch (e) {
                         console.log(e);
                     }
@@ -280,12 +281,24 @@ module.exports = {
 
     },function(err){
         console.log(err);
+    },
+    deleteMnistModel: function (id) {
+        var path = FILE_SAVE_PATH +'/'+ id;
+        if(fs.existsSync(path)){
+
+            fs.readdirSync(path).forEach(function(file,index){
+                fs.unlinkSync(path + "/" + file);
+            });
+            fs.rmdirSync(FILE_SAVE_PATH +'/'+ id);
+            console.log('model: '+ id +' deleted');
+        }
     }
 
 };
 
 function createStatistics(trainingTime, bestResult, loss, epochs, batchSize, id) {
 
+    /*
     axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/statistic', {
         id: id,
         createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
@@ -304,10 +317,31 @@ function createStatistics(trainingTime, bestResult, loss, epochs, batchSize, id)
     .catch(function (error) {
         console.log(error);
     });
+    */
+
+    request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update-js/statistic', {
+        json: {
+            id: id,
+            createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
+            trainingTime: trainingTime ,
+            numberOfTraining: 1,
+            lastResult: bestResult,
+            bestResult: bestResult,
+            epochs: epochs,
+            loss: loss,
+            batchSize: batchSize
+        }
+    }, (error, res, body) => {
+        if (error) {
+            console.error(error)
+            return
+        }
+    });
 }
 
 function createOrUpdateTraningProcess(id, trainingInPercent) {
 
+    /*
     axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
         id: id,
         trainingProcess: trainingInPercent
@@ -318,86 +352,110 @@ function createOrUpdateTraningProcess(id, trainingInPercent) {
     .catch(function (error) {
         console.log(error);
     });
+    */
+    request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
+        json: {
+            id: id,
+            trainingProcess: trainingInPercent
+        }
+    }, (error, res, body) => {
+        if (error) {
+            console.error(error)
+            return
+        }
+        // console.log(`statusCode: ${res.statusCode}`)
+        // console.log(body)
+    });
 
 }
 
 
 function createModel(id){
 
-
-
     //if an error occurs while reading vinnsl definition, break forEach loop and use default model.
     let useDefaultModel = false;
-
     const model = tf.sequential();
-
-    //convolutional layer 1
-    model.add(tf.layers.conv2d({
-        inputShape: [28,28,1],
-        kernelSize: 3,
-        activation: 'relu',
-        filters: 32
-    }));
-
-    hiddenNeurons.forEach(function (value, index, array) {
-
-        if(value[0] === '' || typeof value[0] === 'undefined' || value[0] === null ||
-           value[1] === '' || typeof value[1] === 'undefined' || value[1] === null) {
-            useDefaultModel = true;
-        }
+    try {
 
 
-        if(!useDefaultModel){
 
-            if(value[0].toLowerCase().includes('conv')){
-                model.add(tf.layers.conv2d({
-                    kernelSize: 3,
-                    activation: 'relu',
-                    filters: value[1]
-                }));
-
-            } else if(value[0].toLowerCase().includes('maxpool')){
-                model.add(tf.layers.maxPooling2d({
-                    poolSize: [2, 2]
-                }));
-
-            } else if(value[0].toLowerCase().includes('flat')){
-                model.add(tf.layers.flatten());
-
-            } else if(value[0].toLowerCase().includes('dropout')){
-                let rate = (value[1] / 100);
-                model.add(tf.layers.dropout({
-                    rate: rate
-                }));
-
-            } else if(value[0].toLowerCase().includes('dense')){
-                model.add(tf.layers.dense({
-                    units: value[1],
-                    activation: 'relu'
-                }));
-            }
-        }
-    });
-
-    if(!useDefaultModel){
-        //output layer
-        model.add(tf.layers.dense({
-            units: 10,
-            activation: 'softmax'
+        //convolutional layer 1
+        model.add(tf.layers.conv2d({
+            inputShape: [28, 28, 1],
+            kernelSize: 3,
+            activation: 'relu',
+            filters: 32
         }));
 
-        const optimizer = 'rmsprop';
+        let flattenLayerAdded = false;
+        hiddenNeurons.forEach(function (value, index, array) {
 
-        model.compile({
-            optimizer: optimizer,
-            loss: 'categoricalCrossentropy',
-            metrics: ['accuracy']
+            if (value[0] === '' || typeof value[0] === 'undefined' || value[0] === null ||
+                value[1] === '' || typeof value[1] === 'undefined' || value[1] === null) {
+                useDefaultModel = true;
+            }
+
+
+            if (!useDefaultModel) {
+                if (!flattenLayerAdded) {
+                    model.add(tf.layers.flatten());
+                    flattenLayerAdded = true;
+                }
+                if (value[0].toLowerCase().includes('conv')) {
+                    model.add(tf.layers.conv2d({
+                        kernelSize: 3,
+                        activation: 'relu',
+                        filters: value[1]
+                    }));
+
+                } else if (value[0].toLowerCase().includes('maxpool')) {
+                    model.add(tf.layers.maxPooling2d({
+                        poolSize: [2, 2]
+                    }));
+
+                } else if (value[0].toLowerCase().includes('flat')) {
+                    model.add(tf.layers.flatten());
+
+                } else if (value[0].toLowerCase().includes('dropout')) {
+                    let rate = (value[1] / 100);
+                    model.add(tf.layers.dropout({
+                        rate: rate
+                    }));
+
+                } else if (value[0].toLowerCase().includes('dense')) {
+                    model.add(tf.layers.dense({
+                        units: value[1],
+                        activation: 'relu'
+                    }));
+                }
+            }
         });
-        model.summary();
+    }catch (e) {
+        console.error('Your model can not be created. DEFAULT model will be used!');
+        useDefaultModel = true;
+    }
 
-        return model;
+       if(!useDefaultModel){
 
-    } else {
+
+           //output layer
+           model.add(tf.layers.dense({
+               units: 10,
+               activation: 'softmax'
+           }));
+
+           const optimizer = 'rmsprop';
+
+           model.compile({
+               optimizer: optimizer,
+               loss: 'categoricalCrossentropy',
+               metrics: ['accuracy']
+           });
+           model.summary();
+
+           return model;
+
+       } else {
 
 
     /**

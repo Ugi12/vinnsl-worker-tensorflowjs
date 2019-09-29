@@ -30,15 +30,15 @@ module.exports = {
     getRandomSlice: async function(text, sampleLength, charSet){
         const startIdx = Math.round(Math.random() * (text.length - sampleLength -1));
         const textSlice = text.slice(startIdx, (startIdx+sampleLength));
-        return [textSlice, textToIndices(text, charSet)];
+        return [textSlice, textToIndices(textSlice, charSet)];
 
     },
-    sample: async function (prediction, temperature) {
+    sample: function (prediction, temperature) {
         const logPreds = tf.div(tf.log(prediction), temperature);
         const expPreds = tf.exp(logPreds);
         const sumExpPreds = tf.sum(expPreds);
         prediction = tf.div(expPreds,  sumExpPreds);
-        return tf.multinomial(prediction, 1, null, true).dataSync()[0];
+        return tf.multinomial(prediction, 1, null, false).dataSync()[0];
     }
 
 }

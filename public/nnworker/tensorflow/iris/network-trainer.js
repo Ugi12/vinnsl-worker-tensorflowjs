@@ -1,6 +1,8 @@
-const axios = require('axios')
+
+//const axios = require('axios')
 
 let request = require('request');
+const requestPromise = require('request-promise');
 const fs = require('fs');
 let convert = require('xml-js');
 const tf = require('@tensorflow/tfjs-node');
@@ -11,6 +13,8 @@ const irisJS = require('../../data/iris/iris');
 const table = require('../../util/iris/table');
 let addresses = require('../../util/addresses');
 const FILE_SAVE_PATH = 'public/nnworker/data/saved-models/iris';
+
+const nnStatus = require('../../util/nn-status');
 
 //default values
 const INPUT_NEURONS = 4;
@@ -44,86 +48,129 @@ let options = {
     ignoreDoctype: true
 
 };
+
+
+function loadVinnslXML(id){
+    return requestPromise(addresses.getVinnslServiceEndpoint() + '/vinnsl/' + id);
+}
+function loadIrisData() {
+    return requestPromise(addresses.getVinnslStorageServiceEndpoint() + '/files/' + schemaID);
+}
+
 module.exports = {
 
     irisTrainer: async function (id, vinnslItem,  epochs, learningrate, res) {
 
-        request(addresses.getVinnslServiceEndpoint() + '/vinnsl/' + id,  function (error, response, body) {
-            try{
-                let json = convert.xml2json(body, options);
-                let vinnslJSON = JSON.parse(json);
-                inputNeurons = getinputNeurons(vinnslJSON);
-                outputNeurons = getOutputNeurons(vinnslJSON);
-                activationFunction = getActivationFunction(vinnslJSON);
-                epochs = getIterations(vinnslJSON);
-                epochsGlobal = epochs;
-                //learningRate = getLearningRate(vinnslJSON);
-                getHiddenCount(vinnslJSON);
-                labelIndex = getLabelIndex(vinnslJSON);
-                schemaID = getDataSchemaID(vinnslJSON);
 
-                learningRate = getLearningRate(vinnslJSON);
+        //request(addresses.getVinnslServiceEndpoint() + '/vinnsl/' + id,  function (error, response, body) {
+        try{
+            //if (!error && response.statusCode == 200) {
+            let body = await loadVinnslXML(id);
+            // console.log('body=' + body);
+            let json = convert.xml2json(body, options);
+            let vinnslJSON = JSON.parse(json);
+            inputNeurons = getinputNeurons(vinnslJSON);
+            outputNeurons = getOutputNeurons(vinnslJSON);
+            activationFunction = getActivationFunction(vinnslJSON);
+            epochs = getIterations(vinnslJSON);
+            epochsGlobal = epochs;
+            //learningRate = getLearningRate(vinnslJSON);
+            getHiddenCount(vinnslJSON);
+            labelIndex = getLabelIndex(vinnslJSON);
+            schemaID = getDataSchemaID(vinnslJSON);
 
-                }catch (e) {
-                    console.log(e);
-                }
-        });
+            learningRate = getLearningRate(vinnslJSON);
+            // }else{
+            //   return;
+            //}
+
+        }catch (e) {
+            console.log(e);
+        }
+        //});
 
 
         /**
          * get iris data
          */
-         request(addresses.getVinnslStorageServiceEndpoint() + '/files/' + schemaID, async function (error, response, body) {
+        try{
+            await request(addresses.getVinnslStorageServiceEndpoint() + '/files/' + schemaID, async function (error, response, body) {
 
+                if(error) return;
 
-             if (!error && response.statusCode == 200) {
+                if(epochs == null){
+                    console.log('epochs null');
+                    epochs = DEFAULT_EPOCHS;
+                }
+                if(learningRate == null) {
+                    console.log('learningRate null');
+                    learningRate = DEFAULT_LEARNING_RATE;
+                }
 
-                 const convertedIrisData = converter.csvToArray(body);
-                 const [xTrain, yTrain, xTest, yTest] = converter.getIrisData(convertedIrisData, 0.15);
+                if (!error && response.statusCode == 200) {
 
-                 let model = await trainModel(xTrain, yTrain, xTest, yTest, id);
+                    const convertedIrisData = converter.csvToArray(body);
+                    const [xTrain, yTrain, xTest, yTest] = converter.getIrisData(convertedIrisData, 0.15);
 
-                 const xData = xTest.dataSync();
-                 const yTrue = yTest.argMax(-1).dataSync();
+                    let model = await trainModel(xTrain, yTrain, xTest, yTest, id);
 
-                 const predictOut = model.predict(xTest);
-                 const yPred = predictOut.argMax(-1);
+                    const xData = xTest.dataSync();
+                    const yTrue = yTest.argMax(-1).dataSync();
 
-                 //const logits = Array.from(predictOut.dataSync());
-                 //const winner = irisJS.getIrisClasses([predictOut.argMax(-1).dataSync()[0]]);
+                    const predictOut = model.predict(xTest);
+                    const yPred = predictOut.argMax(-1);
 
-                 let predictionInPercent = await table.renderResultTable(xData, yTrue, yPred.dataSync(), predictOut.dataSync(), res, id);
+                    //const logits = Array.from(predictOut.dataSync());
+                    //const winner = irisJS.getIrisClasses([predictOut.argMax(-1).dataSync()[0]]);
 
-                 createStatistics(TRAINING_DURATION, predictionInPercent, epochs, learningRate, id);
+                    let predictionInPercent = await table.renderResultTable(xData, yTrue, yPred.dataSync(), predictOut.dataSync(), res, id);
 
-             } else {
+                    createStatistics(TRAINING_DURATION, predictionInPercent, epochs, learningRate, id);
 
-                 //on request fail. get default iris data and train model
-                 const [xTrain, yTrain, xTest, yTest] = converter.getIrisData([], 0.15);
+                } else {
 
-                 let model = await trainModel(xTrain, yTrain, xTest, yTest, id);
+                    //on request fail. get default iris data and train model
+                    const [xTrain, yTrain, xTest, yTest] = converter.getIrisData([], 0.15);
 
-                 const xData = xTest.dataSync();
-                 const yTrue = yTest.argMax(-1).dataSync();
+                    let model = await trainModel(xTrain, yTrain, xTest, yTest, id);
 
-                 const predictOut = model.predict(xTest);
-                 const yPred = predictOut.argMax(-1);
+                    const xData = xTest.dataSync();
+                    const yTrue = yTest.argMax(-1).dataSync();
 
-                 //const logits = Array.from(predictOut.dataSync());
-                 //const winner = irisJS.getIrisClasses([predictOut.argMax(-1).dataSync()[0]]);
+                    const predictOut = model.predict(xTest);
+                    const yPred = predictOut.argMax(-1);
 
-                 let predictionInPercent = await table.renderResultTable(xData, yTrue, yPred.dataSync(), predictOut.dataSync(), res, id);
+                    //const logits = Array.from(predictOut.dataSync());
+                    //const winner = irisJS.getIrisClasses([predictOut.argMax(-1).dataSync()[0]]);
 
-                 createStatistics(TRAINING_DURATION, predictionInPercent, epochs, learningRate, id);
+                    let predictionInPercent = await table.renderResultTable(xData, yTrue, yPred.dataSync(), predictOut.dataSync(), res, id);
 
-             }
+                    createStatistics(TRAINING_DURATION, predictionInPercent, epochs, learningRate, id);
 
-         });
+                }
+
+            });
+        }catch (e) {
+            console.log(e);
+        }
+
 
     },function(err){
         console.log(err);
-    }
+    },
     
+    deleteIrisModel: function (id) {
+        var path = FILE_SAVE_PATH +'/'+ id;
+        if(fs.existsSync(path)){
+
+            fs.readdirSync(path).forEach(function(file,index){
+                fs.unlinkSync(path + "/" + file);
+            });
+            fs.rmdirSync(FILE_SAVE_PATH +'/'+ id);
+            console.log('model: '+ id +' deleted');
+        }
+    }
+
 };
 
 
@@ -131,7 +178,7 @@ async function trainModel(xTrain, yTrain, xTest, yTest, id) {
 
     try {
         /**
-         * check if exist pre trained model
+         * check if pre trained model exist
          */
         if(fs.existsSync(FILE_SAVE_PATH +'/'+ id +'/model.json')){
 
@@ -163,6 +210,7 @@ async function trainModel(xTrain, yTrain, xTest, yTest, id) {
                     onTrainEnd: async (epoch, logs) => {
                         await model.save(`file://${FILE_SAVE_PATH}/`+id );
                         createOrUpdateTraningProcess(id, 100);
+                        nnStatus.setStatusToFinished(id);
                         console.log('model saved!')
                     }
                 }
@@ -171,20 +219,21 @@ async function trainModel(xTrain, yTrain, xTest, yTest, id) {
             let endTime = Date.now();
             TRAINING_DURATION = endTime-startTime;
             TRAINING_DURATION = (TRAINING_DURATION/1000).toFixed(1);
+
             return model;
 
         }else{
             fs.mkdirSync(FILE_SAVE_PATH+'/'+id)
             console.log('model not exist.. create and train model..');
             const model = tf.sequential();
-/*
-            model.add(tf.layers.dense({
-                    inputShape: [xTrain.shape[1]],
-                    activation: 'sigmoid',
-                    units: 10
-                }
-            ));
-*/
+            /*
+                        model.add(tf.layers.dense({
+                                inputShape: [xTrain.shape[1]],
+                                activation: 'sigmoid',
+                                units: 10
+                            }
+                        ));
+            */
             /**
              * Input Layer
              */
@@ -223,6 +272,7 @@ async function trainModel(xTrain, yTrain, xTest, yTest, id) {
             });
 
             let startTime = Date.now();
+            let epochCounter = 0;
             const history = await model.fit(xTrain, yTrain, {
                 epochs: epochsGlobal,
                 validationData: [xTest, yTest],
@@ -235,6 +285,8 @@ async function trainModel(xTrain, yTrain, xTest, yTest, id) {
                         createOrUpdateTraningProcess(id, trainingProcess);
                     },
                     onTrainEnd: async (epoch, logs) => {
+                        nnStatus.setStatusToFinished(id);
+                        createOrUpdateTraningProcess(id, 100);
                         await model.save(`file://${FILE_SAVE_PATH}/`+id );
                         console.log('model saved!')
                     }
@@ -255,39 +307,103 @@ async function trainModel(xTrain, yTrain, xTest, yTest, id) {
 }
 
 function createOrUpdateTraningProcess(id, trainingInPercent) {
+    /*
+        axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
+            id: id,
+            trainingProcess: trainingInPercent
+        })
+            .then(function (response) {
+                //ignore response
+            })
+            .catch(function (error) {
+                console.log(error);
+            });
+    */
+    /*
+        axios({
+            method: 'post',
+            url: addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process',
+            data: {
+                id: id,
+                trainingProcess: trainingInPercent
+            }
+        });
+    */
 
-    axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
-        id: id,
-        trainingProcess: trainingInPercent
-    })
+    request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
+        json: {
+            id: id,
+            trainingProcess: trainingInPercent
+        }
+    }, (error, res, body) => {
+        if (error) {
+            console.error(error)
+            return
+        }
+        // console.log(`statusCode: ${res.statusCode}`)
+        // console.log(body)
+    });
+}
+
+
+
+function createStatistics(trainingTime, bestResult, epochs, learningRate, id) {
+    /*
+        axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/statistic', {
+            id: id,
+            createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
+            trainingTime: trainingTime ,
+            numberOfTraining: 1,
+            lastResult: bestResult,
+            bestResult: bestResult,
+            epochs: epochs,
+            learningRate: learningRate
+
+        })
         .then(function (response) {
             //ignore response
         })
         .catch(function (error) {
             console.log(error);
         });
-
-}
-
-function createStatistics(trainingTime, bestResult, epochs, learningRate, id) {
-
-    axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/statistic', {
-        id: id,
-        createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
-        trainingTime: trainingTime ,
-        numberOfTraining: 1,
-        lastResult: bestResult,
-        bestResult: bestResult,
-        epochs: epochs,
-        learningRate: learningRate
-
-    })
-    .then(function (response) {
-        //ignore response
-    })
-    .catch(function (error) {
-        console.log(error);
+    */
+    /*
+        axios({
+            method: 'post',
+            url: addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/statistic',
+            data: {
+                id: id,
+                createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
+                trainingTime: trainingTime ,
+                numberOfTraining: 1,
+                lastResult: bestResult,
+                bestResult: bestResult,
+                epochs: epochs,
+                learningRate: learningRate
+            }
+        });
+        */
+    request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update-js/statistic', {
+        json: {
+            id: id,
+            createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
+            trainingTime: trainingTime,
+            numberOfTraining: 1,
+            lastResult: bestResult,
+            bestResult: bestResult,
+            epochs: epochs,
+            learningRate: learningRate
+        }
+    }, (error, res, body) => {
+        if (error) {
+            console.error(error)
+            return
+        }
+        //console.log(`statusCode: ${res.statusCode}`)
+        //console.log(body)
     });
+
+
 }
 
 
@@ -452,10 +568,10 @@ function getActivationFunction(vinnslJSON) {
                 if(vinnslJSON.vinnsl.definition.parameters){
                     if(vinnslJSON.vinnsl.definition.parameters.comboparameter){
                         //for(i in vinnslJSON.vinnsl.definition.parameters.comboparameter){
-                            if(vinnslJSON.vinnsl.definition.parameters.comboparameter._attributes.name === 'activationfunction'){
-                                return vinnslJSON.vinnsl.definition.parameters.comboparameter._text;
-                            }
-                       // }
+                        if(vinnslJSON.vinnsl.definition.parameters.comboparameter._attributes.name === 'activationfunction'){
+                            return vinnslJSON.vinnsl.definition.parameters.comboparameter._text;
+                        }
+                        // }
                     }
                 }
             }
@@ -538,6 +654,7 @@ function convertCSVtoJSON(csv) {
     //return JSON.stringify(result); //JSON
 
 }
+
 
 
 

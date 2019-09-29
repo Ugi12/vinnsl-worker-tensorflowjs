@@ -1,5 +1,6 @@
-const axios = require('axios');
+//const axios = require('axios');
 let addresses = require('./addresses');
+let request = require('request');
 
 
 const nnStatus = {
@@ -14,22 +15,39 @@ const nnStatus = {
 module.exports = {
 
     setStatusToFinished: function(id) {
-    axios.put(addresses.getVinnslServiceEndpoint() + '/status/' + id + '/FINISHED')
+
+        /*
+        axios.put(addresses.getVinnslServiceEndpoint() + '/status/' + id + '/FINISHED')
         .then(response => {
             //ignore response
         })
         .catch(error => {
             console.log(error);
+        });
+        */
+        request.put(addresses.getVinnslServiceEndpoint() + '/status/' + id + '/FINISHED', (error, res, body) => {
+            if (error) {
+                console.error(error)
+                return
+            }
         });
     },
 
     setStatusToInProgress: function(id) {
-    axios.put(addresses.getVinnslServiceEndpoint() + '/status/' + id + '/INPROGRESS')
+        /*
+        axios.put(addresses.getVinnslServiceEndpoint() + '/status/' + id + '/INPROGRESS')
         .then(response => {
             //ignore response
         })
         .catch(error => {
             console.log(error);
+        }); */
+
+        request.put(addresses.getVinnslServiceEndpoint() + '/status/' + id + '/INPROGRESS', (error, res, body) => {
+            if (error) {
+                console.error(error)
+                return
+            }
         });
-}
+    }
 }

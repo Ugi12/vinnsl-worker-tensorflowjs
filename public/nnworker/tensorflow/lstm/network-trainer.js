@@ -1,6 +1,7 @@
-const axios = require('axios')
+//  const axios = require('axios')
 
-const request = require('request-promise');
+const requestPromise = require('request-promise');
+const request = require('request');
 const fs = require('fs');
 const convert = require('xml-js');
 const tf = require('@tensorflow/tfjs-node');
@@ -28,9 +29,10 @@ let hiddenlayers = null;
 let hiddenNeurons = [];
 let activationFunction = null;
 
-let epochs = 1;
+//
+// let epochs = 1;
 let examplesPerEpoch = 2048;
-let batchSize = null;
+//let batchSize = null;
 let lstmLayerSizes = [];
 let validationSplit = 0.0625;
 let learningRate = null;
@@ -42,6 +44,16 @@ let examplePosition = 0;
 let shuffledBeginIndices = [];
 let text = '';
 
+
+////////////
+let seqLength = 5;
+let outputKeepProb = 0.2;
+let epochs = 100;
+let batchSize = 200;
+
+const LSTM_LAYERS = 2;
+const LSTM_SIZE = 128;
+//////////
 
 let options = {
     compact: true,
@@ -57,27 +69,31 @@ let options = {
 
 
 
-function loadTrainingTest(id) {
-    return request(addresses.getVinnslServiceEndpoint() + '/vinnsl/get-text/lstm/' + id)
+function loadTrainingText(id) {
+    return requestPromise(addresses.getVinnslServiceEndpoint() + '/vinnsl/get-text/lstm/' + id)
 }
 function loadVinnslXML(id){
-    return request(addresses.getVinnslServiceEndpoint() + '/vinnsl/' + id);
+    return requestPromise(addresses.getVinnslServiceEndpoint() + '/vinnsl/' + id);
 }
 
 module.exports = {
 
-    lstmTrainer: async function (id) {
+    lstmTrainer: async function (id, t) {
+
+
 
         try{
 
-            text = await loadTrainingTest(id);
+            text = await loadTrainingText(id);
+            //text =  await getText();
             const VINNSL = await loadVinnslXML(id);
 
             let json = convert.xml2json(VINNSL, options);
             let vinnslJSON = JSON.parse(json);
 
             activationFunction = getActivationFunction(vinnslJSON);
-            epochs = getEpochs(vinnslJSON);
+            //
+            // epochs = getEpochs(vinnslJSON);
             batchSize = getBatchSize(vinnslJSON);
             learningRate = getLearningRate(vinnslJSON);
 
@@ -107,7 +123,7 @@ module.exports = {
 
                 const model = await tf.loadLayersModel(`file://${FILE_SAVE_PATH + '/'+ id +'/model.json'}`);
 
-                const optimizer = tf.train.rmsprop(learningRate);
+                const optimizer = tf.train.rmsprop(0.001);
                 model.compile({
                     optimizer: optimizer,
                     loss: 'categoricalCrossentropy',
@@ -124,6 +140,9 @@ module.exports = {
 
                 let trainingProcess = 0;
                 createOrUpdateTraningProcess(id, 0);
+
+                let loss = 0;
+                let predInpercent = 0;
                 for(let i = 0 ;i < epochs ; ++i){
 
                     const [xs, ys] = nextDataEpoch();
@@ -140,7 +159,10 @@ module.exports = {
                                 }
                             },
                             onTrainEnd: async (batch, logs) => {
-                                let a =9;
+                                const evalOutput = model.evaluate(xs, ys);
+                                predInpercent = (evalOutput[1].dataSync()[0].toFixed(4)) * 100;
+                                loss = evalOutput[0].dataSync()[0].toFixed(3);
+
                             }
                         }
                     })
@@ -149,10 +171,10 @@ module.exports = {
                 }
                 createOrUpdateTraningProcess(id, 100);
 
-                let endTime = Date.now();
+                 let endTime = Date.now();
                 TRAINING_DURATION = endTime-startTime;
                 TRAINING_DURATION = (TRAINING_DURATION/1000/60).toFixed(0);
-                createStatistics(TRAINING_DURATION, 0, 0, epochs, batchSize, id);
+                createStatistics(TRAINING_DURATION, predInpercent, loss, epochs, batchSize, id);
 
                 nnStatus.setStatusToFinished(id);
                 await model.save(`file://${FILE_SAVE_PATH}/` + id);
@@ -162,6 +184,7 @@ module.exports = {
             }else{
                 let startTime = Date.now();
 
+                console.log("create model");
                 const model =  await createModel();
 
                 let batchCount = 0;
@@ -172,6 +195,8 @@ module.exports = {
 
                 let trainingProcess = 0;
                 createOrUpdateTraningProcess(id, 0);
+                let loss = 0;
+                let predInpercent = 0;
                 for(let i = 0 ;i < epochs ; ++i){
 
                     const [xs, ys] = nextDataEpoch();
@@ -188,7 +213,10 @@ module.exports = {
                                 }
                             },
                             onTrainEnd: async (batch, logs) => {
-                                let a =9;
+                                const evalOutput = model.evaluate(xs, ys);
+                                predInpercent = (evalOutput[1].dataSync()[0].toFixed(4)) * 100;
+                                loss = evalOutput[0].dataSync()[0].toFixed(3);
+
                             }
                         }
                     })
@@ -198,7 +226,8 @@ module.exports = {
 
 
                 createOrUpdateTraningProcess(id, 100);
-                createStatistics(TRAINING_DURATION, 0, 0, epochs, batchSize, id);
+
+                createStatistics(TRAINING_DURATION, predInpercent, loss, epochs, batchSize, id);
 
                 nnStatus.setStatusToFinished(id);
                 await model.save(`file://${FILE_SAVE_PATH}/` + id);
@@ -211,13 +240,25 @@ module.exports = {
 
 
         }catch (e) {
-           console.log(e);
+            console.log(e);
+        }
+    },
+    deleteLstmModel: function (id) {
+        var path = FILE_SAVE_PATH +'/'+ id;
+        if(fs.existsSync(path)){
+
+            fs.readdirSync(path).forEach(function(file,index){
+                fs.unlinkSync(path + "/" + file);
+            });
+            fs.rmdirSync(FILE_SAVE_PATH +'/'+ id);
+            console.log('model: '+ id +' deleted');
         }
     }
 }
 
 function createOrUpdateTraningProcess(id, trainingInPercent) {
 
+    /*
     axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
         id: id,
         trainingProcess: trainingInPercent
@@ -227,6 +268,21 @@ function createOrUpdateTraningProcess(id, trainingInPercent) {
     })
     .catch(function (error) {
         console.log(error);
+    });
+    */
+
+    request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
+        json: {
+            id: id,
+            trainingProcess: trainingInPercent
+        }
+    }, (error, res, body) => {
+        if (error) {
+            console.error(error)
+            return
+        }
+        // console.log(`statusCode: ${res.statusCode}`)
+        // console.log(body)
     });
 
 }
@@ -256,6 +312,54 @@ function createModel(){
 
     model.summary();
 
+
+
+/*
+    console.log("setting up model...");
+
+    let cells = [];
+    for(let i = 0; i < LSTM_LAYERS; i++) {
+        const cell = tf.layers.lstmCell({
+            units: LSTM_SIZE
+        });
+        cells.push(cell);
+    }
+
+    const multiLstmCellLayer = tf.layers.rnn({
+        cell: cells,
+        returnSequences: true,
+        inputShape: [sampleLen, charSet.length]
+    });
+
+    const dropoutLayer = tf.layers.dropout({
+        rate: 0.2
+    });
+
+    const flattenLayer = tf.layers.flatten();
+
+    const denseLayer = tf.layers.dense({
+        units: charSet.length,
+        activation: 'softmax',
+        useBias: true
+    });
+
+    const model = tf.sequential();
+    model.add(multiLstmCellLayer);
+    model.add(dropoutLayer);
+    model.add(flattenLayer);
+    model.add(denseLayer);
+
+    model.summary();
+
+    console.log("compiling...");
+
+    model.compile({
+        loss: 'categoricalCrossentropy',
+        optimizer: 'adam'
+    });
+
+    console.log("done.");
+*/
     return model;
 }
 
@@ -416,10 +520,10 @@ function getActivationFunction(vinnslJSON) {
             if(vinnslJSON.vinnsl.definition){
                 if(vinnslJSON.vinnsl.definition.parameters){
                     if(vinnslJSON.vinnsl.definition.parameters.comboparameter){
-                       // for(i in vinnslJSON.vinnsl.definition.parameters.comboparameter){
-                            if(vinnslJSON.vinnsl.definition.parameters.comboparameter._attributes.name === 'activationfunction'){
-                                return vinnslJSON.vinnsl.definition.parameters.comboparameter._text;
-                            }
+                        // for(i in vinnslJSON.vinnsl.definition.parameters.comboparameter){
+                        if(vinnslJSON.vinnsl.definition.parameters.comboparameter._attributes.name === 'activationfunction'){
+                            return vinnslJSON.vinnsl.definition.parameters.comboparameter._text;
+                        }
                         //}
                     }
                 }
@@ -487,6 +591,7 @@ function getHiddenCount(vinnslJSON) {
 
 function createStatistics(trainingTime, bestResult, loss, epochs, batchSize, id) {
 
+    /*
     axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/statistic', {
         id: id,
         createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
@@ -505,7 +610,37 @@ function createStatistics(trainingTime, bestResult, loss, epochs, batchSize, id)
         .catch(function (error) {
             console.log(error);
         });
+
+        */
+
+    request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update-js/statistic', {
+        json: {
+            id: id,
+            createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
+            trainingTime: trainingTime ,
+            numberOfTraining: 1,
+            lastResult: bestResult,
+            bestResult: bestResult,
+            epochs: epochs,
+            loss: loss,
+            batchSize: batchSize
+        }
+    }, (error, res, body) => {
+        if (error) {
+            console.error(error)
+            return
+        }
+        //console.log(`statusCode: ${res.statusCode}`)
+        //console.log(body)
+    });
 }
+
+
+async function getText() {
+    return `long ago , the mice had a general council to consider what measures they could take to outwit their common enemy , the cat . some said this , and some said that but at last a young mouse got up and said he had a proposal to make , which he thought would meet the case . you will all agree , said he , that our chief danger consists in the sly and treacherous manner in which the enemy approaches us . now , if we could receive some signal of her approach , we could easily escape from her . i venture , therefore , to propose that a small bell be procured , and attached by a ribbon round the neck of the cat . by this means we should always know when she was about , and could easily retire while she was in the neighbourhood . this proposal met with general applause , until an old mouse got up and said that is all very well , but who is to bell the cat ? the mice looked at one another and nobody spoke . then the old mouse said it is easy to propose impossible remedies .`;
+
+}
+
 
 
 

@@ -3,7 +3,7 @@ const tf = require('@tensorflow/tfjs-node');
 const fs = require('fs');
 const converter = require('../../util/wine/converter')
 let addresses = require('../../util/addresses');
-const axios = require('axios');
+// const axios = require('axios');
 let dateFormat = require('dateformat');
 
 const wineJS = require('../../data/wine/wine');
@@ -280,6 +280,7 @@ async function trainModel(xTrain, yTrain, xTest, yTest, id) {
 
 function createOrUpdateTraningProcess(id, trainingInPercent) {
 
+    /*
     axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
         id: id,
         trainingProcess: trainingInPercent
@@ -290,12 +291,27 @@ function createOrUpdateTraningProcess(id, trainingInPercent) {
         .catch(function (error) {
             console.log(error);
         });
+        */
+    request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/process', {
+        json: {
+            id: id,
+            trainingProcess: trainingInPercent
+        }
+    }, (error, res, body) => {
+        if (error) {
+            console.error(error)
+            return
+        }
+        // console.log(`statusCode: ${res.statusCode}`)
+        // console.log(body)
+    });
 
 }
 
 
 function createStatistics(trainingTime, bestResult, loss, epochs, batchSize, id) {
 
+    /*
     axios.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update/statistic', {
         id: id,
         createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
@@ -314,6 +330,26 @@ function createStatistics(trainingTime, bestResult, loss, epochs, batchSize, id)
         .catch(function (error) {
             console.log(error);
         });
+        */
+
+    request.post(addresses.getVinnslServiceEndpoint() + '/vinnsl/create-update-js/statistic', {
+        json: {
+            id: id,
+            createTimestamp: dateFormat(new Date(), "UTC:dd.mm.yyyy hh:MM:ss TT"),
+            trainingTime: trainingTime ,
+            numberOfTraining: 1,
+            lastResult: bestResult,
+            bestResult: bestResult,
+            epochs: epochs,
+            loss: loss,
+            batchSize: batchSize
+        }
+    }, (error, res, body) => {
+        if (error) {
+            console.error(error)
+            return
+        }
+    });
 }
 
 
@@ -362,6 +398,17 @@ module.exports = {
             }
         });
 
+    },
+    deleteWineModel: function (id) {
+        var path = FILE_SAVE_PATH +'/'+ id;
+        if(fs.existsSync(path)){
+
+            fs.readdirSync(path).forEach(function(file,index){
+                fs.unlinkSync(path + "/" + file);
+            });
+            fs.rmdirSync(FILE_SAVE_PATH +'/'+ id);
+            console.log('model: '+ id +' deleted');
+        }
     }
 }
 
